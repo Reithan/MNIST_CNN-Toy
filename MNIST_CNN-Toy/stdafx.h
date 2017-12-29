@@ -7,8 +7,11 @@
 
 #include "targetver.h"
 
+#pragma warning(push)
+#pragma warning(disable:4275)
 #include <arrayfire.h>
 #include <af/util.h>
+#pragma warning(pop)
 
 #include <stdio.h>
 #include <conio.h>
