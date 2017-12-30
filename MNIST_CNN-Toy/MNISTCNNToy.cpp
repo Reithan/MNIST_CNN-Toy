@@ -11,6 +11,8 @@
 #include "SoftmaxLayer.h"
 #include "TrainingFunctions.h"
 #include "PaddedConvolutionLayer.h"
+#include "MaxPoolLayer.h"
+#include "ReLULayer.h"
 
 int IntEndSwap(int input)
 {
@@ -30,10 +32,12 @@ int main()
 {
 	af::setDevice(0);
 	af::info();
-
+	af::setSeed(time(nullptr));
 	using namespace UAFML;
+
 	int num_train, num_test, width, height;
 	af::array train_labels, train_images, test_labels, test_images;
+	bool read = false;
 
 	try
 	{
@@ -79,7 +83,7 @@ int main()
 			}
 			std::cout << '\n';
 
-			af::saveArray("mnist_train_img", train_images, "mnist_set.arr", true);
+			read = true;
 		}
 	}
 
@@ -127,7 +131,7 @@ int main()
 			}
 			std::cout << '\n';
 
-			af::saveArray("mnist_test_img", test_images, "mnist_set.arr", true);
+			read = true;
 		}
 	}
 
@@ -161,7 +165,7 @@ int main()
 				train_labels(item_idx, item) = 1;
 			}
 
-			af::saveArray("mnist_train_lbl", train_labels, "mnist_set.arr", true);
+			read = true;
 		}
 	}
 
@@ -195,9 +199,18 @@ int main()
 				test_labels(item_idx, item) = 1;
 			}
 
-			af::saveArray("mnist_test_lbl", test_labels, "mnist_set.arr", true);
+			read = true;
 		}
 	}
+
+	if (read)
+	{
+		af::saveArray("mnist_train_img", train_images, "mnist_set.arr", false);
+		af::saveArray("mnist_test_img", test_images, "mnist_set.arr", true);
+		af::saveArray("mnist_train_lbl", train_labels, "mnist_set.arr", true);
+		af::saveArray("mnist_test_lbl", test_labels, "mnist_set.arr", true);
+	}
+
 
 	height = (int)train_images.dims(2);
 	width = (int)train_images.dims(3);
@@ -205,43 +218,51 @@ int main()
 	//af::Window window(height * 10, width * 10, "Training Example");
 	//window.image(1 - af::reorder(train_images(rand() % num_train, 0, af::span, af::span), 2, 3, 0, 1) / 255.0f);
 
-	UAFML::NeuralNet mnist_cnn(0.01);
-	if(0)
+	UAFML::NeuralNet mnist_cnn(0.1);
+	if (1)
 	{
-		mnist_cnn.AddLayer<ConvolutionLayer>(af::dim4(20, 1, 3, 3));
-		mnist_cnn.AddLayer<BiasLayer>(af::dim4(1, 20, height - 2, width - 2));
-		mnist_cnn.AddLayer<TanHLayer>();
+		mnist_cnn.AddLayer<PaddedConvolutionLayer>(af::dim4(32, 1, 5, 5));
+		mnist_cnn.AddLayer<BiasLayer>(af::dim4(1, 32, 28, 28));
+		mnist_cnn.AddLayer<ReLULayer>();
 
-		mnist_cnn.AddLayer<ConvolutionLayer>(af::dim4(15, 20, 3, 3));
-		mnist_cnn.AddLayer<BiasLayer>(af::dim4(1, 15, height - 4, width - 4));
-		mnist_cnn.AddLayer<TanHLayer>();
+		mnist_cnn.AddLayer<MaxPoolLayer>(af::dim4(2, 2));
 
-		mnist_cnn.AddLayer<ConvolutionLayer>(af::dim4(10, 15, 3, 3));
-		mnist_cnn.AddLayer<BiasLayer>(af::dim4(1, 10, height - 6, width - 6));
-		mnist_cnn.AddLayer<TanHLayer>();
+		mnist_cnn.AddLayer<PaddedConvolutionLayer>(af::dim4(64, 32, 5, 5));
+		mnist_cnn.AddLayer<BiasLayer>(af::dim4(1, 64, 14, 14));
+		mnist_cnn.AddLayer<ReLULayer>();
 
-		mnist_cnn.AddLayer<DenseLayer>(af::dim4(10 * (height - 6) * (width - 6), 10));
+		mnist_cnn.AddLayer<MaxPoolLayer>(af::dim4(2, 2));
+
+		mnist_cnn.AddLayer<DenseLayer>(af::dim4(64 * 7 * 7, 1024));
+		mnist_cnn.AddLayer<BiasLayer>(af::dim4(1, 1024));
+		mnist_cnn.AddLayer<ReLULayer>();
+
+		mnist_cnn.AddLayer<DenseLayer>(af::dim4(1024, 10));
 		mnist_cnn.AddLayer<BiasLayer>(af::dim4(1, 10));
-		//mnist_cnn.AddLayer<TanHLayer>();
+		mnist_cnn.AddLayer<TanHLayer>();
 
 		mnist_cnn.AddLayer<SoftmaxLayer>();
 	}
-	else if (1)
+	else
 	{
-		mnist_cnn.AddLayer<DenseLayer>(af::dim4(height * width, 10));
-		mnist_cnn.AddLayer<BiasLayer>(af::dim4(1, 10));
+		// Coursera version
+		mnist_cnn.AddLayer<DenseLayer>(af::dim4(height * width, 25));
+		mnist_cnn.AddLayer<BiasLayer>(af::dim4(1, 25));
 		mnist_cnn.AddLayer<SigmoidLayer>();
 
-		mnist_cnn.AddLayer<DenseLayer>(af::dim4(10, 10));
+		mnist_cnn.AddLayer<DenseLayer>(af::dim4(25, 10));
 		mnist_cnn.AddLayer<BiasLayer>(af::dim4(1, 10));
 		mnist_cnn.AddLayer<SigmoidLayer>();
 	}
 
-	if (0 && !CheckGradient(mnist_cnn, af::dim4(1, 1, height, width), 10, 7960, f64))
+
+	if (0 && !CheckGradient(mnist_cnn, af::dim4(3, 1, height, width), 10, 1000, f32))
 		std::cout << "Gradient check FAILED.\n";
 	else
 	{
 		std::cout << "Gradient check successful.\n";
+		af::array best_weights, new_weights, weights = InitializeWeights(mnist_cnn.GetWeightsSize());
+		double cost, new_cost, best_cost;
 		af::array train_points = af::constant(0.0, 1, 2);
 		af::array test_points = af::constant(100.0, 1, 2);
 		test_points(0, 0) = 0.0;
@@ -249,11 +270,16 @@ int main()
 		std::mutex plot_lock;
 
 		std::thread training_thread([&]()->void{
-			for (int num = 1; num <= 80; ++num)
+			af::setSeed(time(nullptr));
+			for (int num = 5; num <= 80; num += 5)
 			{
-				af::array weights, new_weights, best_weights = weights = InitializeWeights(mnist_cnn.GetWeightsSize());
-				double cost, new_cost, best_cost = DBL_MAX;
+				// manually invoke garbage collector to clean up any leftover temporaries
+				//	shouldn't be needed long-term.
+				af::deviceGC();
+
 				auto set = RandomPermutation(num, num_train);
+				best_cost = DBL_MAX;
+
 				for (size_t i = 0; i < 3; i++)
 				{
 					new_weights = InitializeWeights(mnist_cnn.GetWeightsSize());
@@ -264,18 +290,37 @@ int main()
 					cost = mnist_cnn.CalculateCost(mnist_cnn.ForwardPropagate(train_images(set, af::span), weights), train_labels(set, af::span), weights);
 					new_cost = mnist_cnn.CalculateCost(mnist_cnn.ForwardPropagate(train_images(set, af::span), new_weights), train_labels(set, af::span), new_weights);
 
+					// put lowest in best
+					af::array temp_weights = best_weights;
+					double temp_cost = best_cost;
 					if (new_cost < cost && new_cost < best_cost)
 					{
 						best_cost = new_cost;
 						best_weights = new_weights;
+						new_cost = temp_cost;
+						new_weights = temp_weights;
 					}
 					else if (cost < best_cost)
 					{
 						best_cost = cost;
 						best_weights = weights;
+						cost = temp_cost;
+						weights = temp_weights;
 					}
 
-					weights = ((1 / new_cost) * new_weights + (1 / cost) * weights) / ((cost + new_cost) / (cost * new_cost));
+					// put second lowest in new
+					if (cost < new_cost)
+					{
+						new_cost = cost;
+						new_weights = weights;
+					}
+
+					// update weights with interpolated weights between best & new
+					weights = ((1 / new_cost) * new_weights + (1 / best_cost) * best_weights) / ((best_cost + new_cost) / (best_cost * new_cost));
+
+					// manually invoke garbage collector to clean up any leftover temporaries
+					//	shouldn't be needed long-term.
+					af::deviceGC();
 				}
 
 				weights = best_weights;
@@ -287,10 +332,11 @@ int main()
 					<< std::setw(10) << std::setfill(' ') << std::setprecision(6) << std::fixed
 					<< cost << '\n';
 
-				cost = mnist_cnn.CalculateCost(mnist_cnn.ForwardPropagate(test_images, weights), test_labels, weights);
+				set = RandomPermutation(1000, num_test);
+				cost = mnist_cnn.CalculateCost(mnist_cnn.ForwardPropagate(test_images(set, af::span), weights), test_labels(set, af::span), weights);
 				test_point(0, 0) = num;
 				test_point(0, 1) = cost;
-				std::cout << "***TESTING COST FOR  " << num << " EXAMPLES:\t"
+				std::cout << "****TESTING COST FOR " << num << " EXAMPLES:\t"
 					<< std::setw(10) << std::setfill(' ') << std::setprecision(6) << std::fixed
 					<< cost << '\n';
 
@@ -304,13 +350,8 @@ int main()
 		});
 
 		af::Window plot(750, 750, "Learning Curve");
-		plot.grid(2, 1);
-		plot(0, 0).setTitle("Training");
-		plot(1, 0).setTitle("Testing");
-		plot(0, 0).setAxesTitles("Cost", "Training Examples", "");
-		plot(1, 0).setAxesTitles("Cost", "Training Examples", "");
-		plot(0, 0).setAxesLimits(0.f, 80.f, 0.f, 16.f, true);
-		plot(1, 0).setAxesLimits(0.f, 80.f, 0.f, 16.f, true);
+		//plot.setAxesTitles("Cost", "Training Examples", ""); // <= DOESN'T WORK
+		plot.setAxesLimits(0.f, 80.f, 0.f, 16.f, true);
 
 		while (!stop)
 		{
@@ -323,7 +364,7 @@ int main()
 			if (plot_lock.try_lock())
 			{
 				plot(0, 0).plot(train_points);
-				plot(1, 0).plot(test_points);
+				plot(0, 0).plot(test_points);
 				plot.show();
 
 				plot_lock.unlock();
