@@ -215,8 +215,8 @@ int main()
 	height = (int)train_images.dims(2);
 	width = (int)train_images.dims(3);
 
-	//af::Window window(height * 10, width * 10, "Training Example");
-	//window.image(1 - af::reorder(train_images(rand() % num_train, 0, af::span, af::span), 2, 3, 0, 1) / 255.0f);
+	af::Window window(height * 10, width * 10, "Training Example");
+	window.image(1 - af::reorder(train_images(rand() % num_train, 0, af::span, af::span), 2, 3, 0, 1) / 255.0f);
 
 	UAFML::NeuralNet mnist_cnn(0.1);
 	if (1)
@@ -282,13 +282,13 @@ int main()
 
 				for (size_t i = 0; i < 3; i++)
 				{
-					new_weights = InitializeWeights(mnist_cnn.GetWeightsSize());
+					new_weights = InitializeWeights(mnist_cnn.GetWeightsSize(),f64);
 
-					ConjugateGradientDescent(mnist_cnn, train_images(set, af::span), train_labels(set, af::span), weights);
-					ConjugateGradientDescent(mnist_cnn, train_images(set, af::span), train_labels(set, af::span), new_weights);
+					ConjugateGradientDescent(mnist_cnn, train_images(set, af::span)/255.0, train_labels(set, af::span), weights);
+					ConjugateGradientDescent(mnist_cnn, train_images(set, af::span)/255.0, train_labels(set, af::span), new_weights);
 
-					cost = mnist_cnn.CalculateCost(mnist_cnn.ForwardPropagate(train_images(set, af::span), weights), train_labels(set, af::span), weights);
-					new_cost = mnist_cnn.CalculateCost(mnist_cnn.ForwardPropagate(train_images(set, af::span), new_weights), train_labels(set, af::span), new_weights);
+					cost = mnist_cnn.CalculateCost(mnist_cnn.ForwardPropagate(train_images(set, af::span)/255.0, weights), train_labels(set, af::span), weights);
+					new_cost = mnist_cnn.CalculateCost(mnist_cnn.ForwardPropagate(train_images(set, af::span)/255.0, new_weights), train_labels(set, af::span), new_weights);
 
 					// put lowest in best
 					af::array temp_weights = best_weights;
