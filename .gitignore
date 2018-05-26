@@ -42,6 +42,7 @@
 *.booproj
 *.TMP
 *.tlog
+*.log
 *.obj
 *.pch
 *.VC.*
@@ -49,3 +50,5 @@ x64/
 [Dd]ebug/
 [Rr]elease/
 ipch/
+*.idb
+*.pdb
